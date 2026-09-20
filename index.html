@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart-CLens Prototype - MIDRESCOMS 2026</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+    color-scheme: light;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+html, body{
+    height:100%;
+    margin:0;
+    font-family:'Poppins', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: linear-gradient(135deg, #fce4ec 0%, #f3e5f5 50%, #e1bee7 100%);
+}
+body{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    overflow:hidden;
+}
+
+#app-container{
+    width:100%;
+    max-width:430px;
+    height:100%;
+    background: linear-gradient(to bottom, #fff5f8, #f5f3ff);
+    position:relative;
+    overflow-x:hidden;
+    overflow-y:auto;
+    box-shadow: 0 25px 50px -12px rgba(139, 92, 246, 0.25);
+    -webkit-overflow-scrolling: touch;
+}
+@media (min-width:450px){
+    body{ padding: 24px 0; }
+    #app-container{
+        height:min(90vh, 900px);
+        border-radius:40px;
+        border:8px solid #ffffff;
+    }
+}
+
+.glass{
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 8px 32px 0 rgba(190, 144, 212, 0.2);
+}
+
+.bubbles-container{ position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+.bubble{
+    position:absolute;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(255,255,255,0.1));
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,0.5);
+    animation: floatUp 9s infinite linear, wobble 3s infinite ease-in-out;
+    opacity:0.6;
+    bottom:-60px;
+}
+@keyframes floatUp{
+    0%{ transform: translateY(0) scale(0); opacity:0; }
+    15%{ opacity:0.6; }
+    100%{ transform: translateY(-110vh) scale(1.5); opacity:0; }
+}
+@keyframes wobble{ 0%,100%{ margin-left:0; } 50%{ margin-left:15px; } }
+
+.cloud{ position:absolute; background:#fff; border-radius:50px; filter:blur(2px); opacity:0.6; z-index:0; }
+
+.screen{ display:none; position:relative; z-index:10; }
+.screen.active{ display:flex; flex-direction:column; min-height:100%; }
+@keyframes fadeIn{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+.screen.active{ animation: fadeIn .35s ease-out; }
+
+.laser-line{
+    position:absolute; left:6%; right:6%; height:2px;
+    background: linear-gradient(90deg, transparent, #f472b6, #fff, #f472b6, transparent);
+    box-shadow: 0 0 12px 3px rgba(236,72,153,0.7);
+    animation: scan 1.8s infinite ease-in-out;
+    display:none; z-index:25;
+}
+@keyframes scan{ 0%{ top:18%; } 50%{ top:82%; } 100%{ top:18%; } }
+
+.status-normal{ color:#10B981; background-color:#d1fae5; border-color:#34d399; }
+.status-mild{ color:#B45309; background-color:#fef3c7; border-color:#fbbf24; }
+.status-high{ color:#E11D48; background-color:#ffe4e6; border-color:#fb7185; }
+
+.bounding-box{
+    position:absolute; border:2.5px dashed; border-radius:10px;
+    display:none; box-shadow:0 0 12px; animation: pulseBox 1.6s infinite;
+}
+.bounding-box::after{
+    content: attr(data-label);
+    position:absolute; top:-22px; left:-2px;
+    font-size:9px; font-weight:700; padding:2px 6px; border-radius:6px;
+    white-space:nowrap; color:#fff; background:inherit;
+}
+@keyframes pulseBox{ 0%,100%{ opacity:1; } 50%{ opacity:0.55; } }
+
+.reticle{ position:absolute; inset:12%; z-index:15; pointer-events:none; opacity:0.55; }
+.reticle span{ position:absolute; width:22px; height:22px; border-color:#fff; }
+.reticle .tl{ top:0; left:0; border-top:2px solid; border-left:2px solid; border-radius:6px 0 0 0; }
+.reticle .tr{ top:0; right:0; border-top:2px solid; border-right:2px solid; border-radius:0 6px 0 0; }
+.reticle .bl{ bottom:0; left:0; border-bottom:2px solid; border-left:2px solid; border-radius:0 0 0 6px; }
+.reticle .br{ bottom:0; right:0; border-bottom:2px solid; border-right:2px solid; border-radius:0 0 6px 0; }
+
+.idle-breathe{ animation: breathe 4.5s ease-in-out infinite; }
+@keyframes breathe{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.025); } }
+
+::-webkit-scrollbar{ width:4px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:#d8b4e2; border-radius:4px; }
+
+button{ -webkit-tap-highlight-color: transparent; }
+</style>
+</head>
+<body>
+
+<div id="app-container">
+
+    <!-- Background Decor -->
+    <div class="bubbles-container">
+        <div class="bubble" style="width:40px;height:40px;left:10%;animation-delay:0s;"></div>
+        <div class="bubble" style="width:25px;height:25px;left:30%;animation-delay:2s;"></div>
+        <div class="bubble" style="width:50px;height:50px;left:70%;animation-delay:1s;"></div>
+        <div class="bubble" style="width:30px;height:30px;left:85%;animation-delay:3s;"></div>
+        <div class="cloud" style="width:120px;height:40px;top:15%;left:-20px;">
+            <div style="width:50px;height:50px;top:-20px;left:15px;" class="absolute bg-white rounded-full"></div>
+            <div style="width:40px;height:40px;top:-10px;left:60px;" class="absolute bg-white rounded-full"></div>
+        </div>
+        <div class="cloud" style="width:100px;height:35px;top:5%;right:-10px;opacity:.5;">
+            <div style="width:40px;height:40px;top:-15px;left:10px;" class="absolute bg-white rounded-full"></div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" role="status" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 glass px-5 py-3 rounded-full text-emerald-600 font-semibold text-sm flex items-center gap-2 opacity-0 transition-opacity duration-300 pointer-events-none w-max max-w-[90%] shadow-lg shadow-emerald-200/50 border-emerald-200" style="top: calc(1.25rem + env(safe-area-inset-top,0px));">
+        <i data-icon="check-circle" class="w-5 h-5 shrink-0"></i>
+        <span id="toast-msg">Data tersimpan di SATUSEHAT!</span>
+    </div>
+
+    <!-- Global Header -->
+    <div id="global-header" class="relative z-20 px-5" style="padding-top: calc(1.5rem + env(safe-area-inset-top,0px));">
+        <div class="glass rounded-2xl p-4 flex flex-col gap-3 pb-2">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-11 h-11 shrink-0 rounded-full bg-gradient-to-tr from-pink-300 to-purple-400 p-1">
+                        <div class="w-full h-full bg-white rounded-full flex items-center justify-center text-purple-600">
+                            <i data-icon="user" class="w-5 h-5"></i>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <h2 class="text-sm font-bold text-gray-800 leading-tight truncate">Bdn. Siti Rahma, S.Tr.Keb</h2>
+                        <p class="text-[10px] text-gray-500 truncate">Klinik Pratama · Poli KIA</p>
+                    </div>
+                </div>
+                <button onclick="toggleModal()" aria-label="Info aplikasi" class="w-8 h-8 shrink-0 rounded-full glass flex items-center justify-center text-purple-500 active:scale-90 transition-transform">
+                    <i data-icon="info" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="flex justify-between items-center text-[10px] gap-2">
+                <div class="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full border border-emerald-100">
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span class="font-medium">Edge AI Aktif (Offline)</span>
+                </div>
+                <div class="flex items-center gap-1 text-purple-600 font-semibold opacity-80 shrink-0">
+                    <i data-icon="award" class="w-3 h-3"></i>
+                    MIDRESCOMS 2026
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN 1: Dashboard -->
+    <div id="screen-1" class="screen active px-5 pb-8 flex-1">
+        <div class="grid grid-cols-2 gap-3 mt-4 mb-6">
+            <div class="glass rounded-2xl p-4 flex flex-col gap-1 items-center justify-center text-center">
+                <div class="text-pink-500 bg-pink-50 p-2 rounded-full mb-1"><i data-icon="users" class="w-5 h-5"></i></div>
+                <span class="text-2xl font-bold text-gray-800">14</span>
+                <span class="text-[10px] text-gray-500 font-medium">Pasien Diskrining<br>Bulan Ini</span>
+            </div>
+            <div class="glass rounded-2xl p-4 flex flex-col gap-1 items-center justify-center text-center">
+                <div class="text-purple-500 bg-purple-50 p-2 rounded-full mb-1"><i data-icon="target" class="w-5 h-5"></i></div>
+                <span class="text-2xl font-bold text-gray-800">100%</span>
+                <span class="text-[10px] text-gray-500 font-medium">Follow-Up Rate<br>(SDGs 3 &amp; 5)</span>
+            </div>
+        </div>
+
+        <div class="glass rounded-2xl p-5 mb-6">
+            <h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <i data-icon="stethoscope" class="w-4 h-4 text-pink-500"></i>
+                Skenario Uji Klinis (Demo)
+            </h3>
+            <div class="flex flex-col gap-3">
+                <label class="relative flex items-start gap-3 p-3 border border-purple-100 rounded-xl cursor-pointer active:bg-white/60 transition-colors bg-white/30">
+                    <input type="radio" name="scenario" value="1" class="peer mt-1 accent-pink-500" checked>
+                    <div>
+                        <p class="text-sm font-semibold text-gray-800">Kasus 1: Epitel Normal</p>
+                        <p class="text-[11px] text-gray-500">Servisitis jinak, tidak ada tanda bahaya kanker serviks.</p>
+                    </div>
+                    <div class="absolute inset-0 border-2 border-transparent peer-checked:border-pink-300 rounded-xl pointer-events-none transition-all"></div>
+                </label>
+                <label class="relative flex items-start gap-3 p-3 border border-purple-100 rounded-xl cursor-pointer active:bg-white/60 transition-colors bg-white/30">
+                    <input type="radio" name="scenario" value="2" class="peer mt-1 accent-pink-500">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-800">Kasus 2: Lesi Asetowhite Ringan</p>
+                        <p class="text-[11px] text-gray-500">Indikasi Krioterapi Lokal Puskesmas (See-and-Treat).</p>
+                    </div>
+                    <div class="absolute inset-0 border-2 border-transparent peer-checked:border-pink-300 rounded-xl pointer-events-none transition-all"></div>
+                </label>
+                <label class="relative flex items-start gap-3 p-3 border border-purple-100 rounded-xl cursor-pointer active:bg-white/60 transition-colors bg-white/30">
+                    <input type="radio" name="scenario" value="3" class="peer mt-1 accent-pink-500">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-800">Kasus 3: Lesi Derajat Tinggi</p>
+                        <p class="text-[11px] text-gray-500">Indikasi Rujukan Segera ke Dokter Sp.OG (HSIL).</p>
+                    </div>
+                    <div class="absolute inset-0 border-2 border-transparent peer-checked:border-pink-300 rounded-xl pointer-events-none transition-all"></div>
+                </label>
+            </div>
+        </div>
+
+        <button onclick="startCamera()" class="w-full bg-gradient-to-r from-pink-400 to-purple-500 active:from-pink-500 active:to-purple-600 text-white rounded-2xl py-4 px-6 font-bold text-sm shadow-lg shadow-pink-200 transition-transform active:scale-95 flex items-center justify-center gap-3 relative overflow-hidden">
+            <i data-icon="scan" class="w-5 h-5"></i>
+            Mulai Skrining Kamera Smart-CLens
+        </button>
+    </div>
+
+    <!-- SCREEN 2: Camera Live-View -->
+    <div id="screen-2" class="screen w-full h-full absolute inset-0 bg-black z-30">
+        <div class="absolute top-0 w-full p-5 flex justify-between items-center z-40 bg-gradient-to-b from-black/80 to-transparent pb-10" style="padding-top: calc(1.25rem + env(safe-area-inset-top,0px));">
+            <button onclick="goBackToDashboard()" aria-label="Kembali" class="text-white bg-white/20 p-2 rounded-full backdrop-blur-md active:scale-90 transition-transform">
+                <i data-icon="arrow-left" class="w-6 h-6"></i>
+            </button>
+            <span class="bg-blue-600/80 backdrop-blur-sm text-white text-[10px] px-3 py-1 rounded-full border border-blue-400/50 shadow-[0_0_10px_rgba(37,99,235,0.5)]">
+                Smart-CLens 12x Polarized
+            </span>
+            <div class="w-10"></div>
+        </div>
+
+        <div class="w-full h-full flex items-center justify-center relative overflow-hidden bg-[#170a0e]" id="camera-feed">
+            <div class="absolute inset-0 pointer-events-none z-10" style="background:radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.55) 62%, rgba(0,0,0,0.92) 100%);"></div>
+            <div id="laser" class="laser-line"></div>
+            <div id="reticle" class="reticle"><span class="tl"></span><span class="tr"></span><span class="bl"></span><span class="br"></span></div>
+
+            <svg viewBox="0 0 200 200" class="w-[88%] max-w-[360px] relative z-0 transition-transform duration-1000 idle-breathe" id="cervix-svg">
+                <!-- svgContent injected by JS to keep this file lean -->
+            </svg>
+
+            <div id="ai-bounding-box" class="bounding-box"></div>
+        </div>
+
+        <div id="scan-overlay" class="absolute inset-0 bg-black/55 z-30 flex flex-col items-center justify-center hidden backdrop-blur-[2px]">
+            <div class="w-16 h-16 rounded-full border-4 border-pink-500/30 border-t-pink-500 animate-spin mb-4"></div>
+            <p id="scan-text" class="text-white text-sm font-semibold tracking-wide text-center px-6">Menginisiasi pemindaian...</p>
+        </div>
+
+        <div class="absolute bottom-0 w-full flex justify-center z-40 pb-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom,0px));">
+            <button id="capture-btn" onclick="captureAndScan()" aria-label="Ambil gambar" class="relative flex items-center justify-center w-20 h-20 bg-white/20 rounded-full border-[3px] border-white backdrop-blur-md transition-transform active:scale-90">
+                <div class="w-14 h-14 bg-white rounded-full flex items-center justify-center text-pink-600 shadow-[0_0_15px_rgba(255,255,255,0.8)]">
+                    <i data-icon="aperture" class="w-8 h-8"></i>
+                </div>
+            </button>
+        </div>
+    </div>
+
+    <!-- SCREEN 3: Analysis Results -->
+    <div id="screen-3" class="screen px-5 pb-8 flex-1 pt-4">
+        <h2 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2 justify-center">
+            <i data-icon="clipboard-check" class="w-5 h-5 text-purple-600"></i>
+            Laporan Analisis AI
+        </h2>
+
+        <div class="glass rounded-2xl p-2 mb-4 relative overflow-hidden bg-white/40 flex justify-center h-[210px]">
+            <div id="result-image-container" class="relative h-full aspect-square bg-[#170a0e] rounded-xl overflow-hidden flex items-center justify-center"></div>
+        </div>
+
+        <div class="glass rounded-2xl p-5 mb-4 flex flex-col gap-3 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-emerald-500" id="result-indicator-bar"></div>
+            <div class="flex justify-between items-start gap-3">
+                <div class="min-w-0">
+                    <p class="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Klasifikasi Jaringan</p>
+                    <h3 id="result-classification" class="text-md font-bold text-gray-800 leading-tight mt-1">Epitel Normal / Servisitis</h3>
+                </div>
+                <div id="result-badge" class="px-3 py-1 rounded-full border text-xs font-bold status-normal shrink-0">Aman</div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-1">
+                <div class="bg-white/50 rounded-xl p-3 border border-white">
+                    <p class="text-[10px] text-gray-500 font-medium mb-1">AI Confidence Score</p>
+                    <p id="result-confidence" class="text-lg font-bold text-purple-700">98.2%</p>
+                </div>
+                <div class="bg-white/50 rounded-xl p-3 border border-white">
+                    <p class="text-[10px] text-gray-500 font-medium mb-1">Swede Score (Otomatis)</p>
+                    <p id="result-swede" class="text-lg font-bold text-purple-700">0 / 10</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass rounded-2xl p-5 mb-6">
+            <h4 class="text-xs font-bold text-gray-800 mb-2 flex items-center gap-1.5">
+                <i data-icon="activity" class="w-4 h-4 text-pink-500"></i>
+                Rekomendasi Tindakan (Jalur Klinis)
+            </h4>
+            <p id="result-action" class="text-sm text-gray-700 font-medium leading-relaxed bg-pink-50/50 p-3 rounded-xl border border-pink-100">
+                Edukasi rutin menjaga kebersihan. Jadwalkan ulang pemeriksaan IVA/Pap Smear 3-5 tahun lagi.
+            </p>
+            <h4 class="text-xs font-bold text-gray-800 mt-4 mb-2 flex items-center gap-1.5">
+                <i data-icon="heart" class="w-4 h-4 text-purple-500"></i>
+                Poin Konseling Pasien
+            </h4>
+            <p id="result-counseling" class="text-xs text-gray-600 leading-relaxed italic bg-white/60 p-3 rounded-xl border border-gray-100">
+                "Ibu, rahimnya sehat ya. Tidak ada tanda bahaya. Tetap jaga kebersihan area kewanitaan ya Bu."
+            </p>
+        </div>
+
+        <div class="flex flex-col gap-3 mt-auto">
+            <button onclick="saveToSatuSehat()" class="w-full bg-emerald-500 active:bg-emerald-600 text-white rounded-xl py-3.5 px-4 font-bold text-sm shadow-md shadow-emerald-200 transition-transform active:scale-95 flex items-center justify-center gap-2">
+                <i data-icon="cloud-upload" class="w-4 h-4"></i>
+                Simpan &amp; Sinkronisasi ke SATUSEHAT
+            </button>
+            <button onclick="restartScreening()" class="w-full bg-white text-purple-600 border border-purple-200 active:bg-purple-50 rounded-xl py-3.5 px-4 font-bold text-sm shadow-sm transition-transform active:scale-95 flex items-center justify-center gap-2">
+                <i data-icon="refresh-cw" class="w-4 h-4"></i>
+                Ulangi Pemeriksaan Baru
+            </button>
+        </div>
+        <div class="h-6"></div>
+    </div>
+
+    <!-- MODAL -->
+    <div id="about-modal" class="fixed inset-0 z-50 flex items-center justify-center px-5 opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="toggleModal()"></div>
+        <div class="glass w-full max-w-sm rounded-3xl p-6 relative transform scale-95 transition-transform duration-300" id="modal-content">
+            <button onclick="toggleModal()" aria-label="Tutup" class="absolute top-4 right-4 text-gray-400 bg-white/50 rounded-full p-1 active:scale-90 transition-transform">
+                <i data-icon="x" class="w-5 h-5"></i>
+            </button>
+            <div class="flex flex-col items-center text-center mb-5">
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-400 to-purple-600 flex items-center justify-center text-white mb-3 shadow-lg shadow-purple-300/50">
+                    <i data-icon="microscope" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 leading-tight">Smart-CLens</h3>
+                <p class="text-xs text-purple-600 font-medium">Smart Colposcopy Lens for Real-Time Cervical Screening</p>
+            </div>
+            <div class="space-y-3 mb-5">
+                <div class="bg-white/60 p-3 rounded-xl border border-white">
+                    <h4 class="text-[10px] uppercase text-gray-500 font-bold mb-1">Spesifikasi Teknologi</h4>
+                    <p class="text-xs text-gray-700">Lensa makro polarisasi 12x yang meminimalisir silau mukosa serviks, diintegrasikan dengan model Convolutional Neural Network (CNN) untuk deteksi lesi asetowhite secara real-time &amp; offline.</p>
+                </div>
+                <div class="bg-white/60 p-3 rounded-xl border border-white">
+                    <h4 class="text-[10px] uppercase text-gray-500 font-bold mb-1">Keselarasan</h4>
+                    <p class="text-xs text-gray-700">Mendukung percepatan target WHO Eliminasi Kanker Serviks 2030 (SDGs 3 &amp; 5) di fasilitas kesehatan primer (Puskesmas).</p>
+                </div>
+                <div class="bg-gradient-to-r from-pink-50 to-purple-50 p-3 rounded-xl border border-purple-100">
+                    <h4 class="text-[10px] uppercase text-purple-600 font-bold mb-1 flex items-center gap-1 justify-center">
+                        <i data-icon="users" class="w-3 h-3"></i> Tim Mahasiswa FK UM
+                    </h4>
+                    <p class="text-[11px] text-gray-700 text-center font-medium">M. Fakhrul Hafiz &bull; Hendrik &bull; Naya &bull; Anya &bull; Japik</p>
+                </div>
+            </div>
+            <p class="text-[10px] text-center text-gray-400">MIDRESCOMS 2026 &mdash; Universitas Negeri Malang</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+/* ---------- Inline icon set (self-contained, no external icon library) ---------- */
+const ICONS = {
+    "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+    "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.9" fill="currentColor" stroke="none"/>',
+    "award": '<circle cx="12" cy="8" r="6"/><path d="M8.5 13.5 7 22l5-3 5 3-1.5-8.5"/>',
+    "stethoscope": '<path d="M5 3v6a4 4 0 0 0 8 0V3"/><path d="M9 15a5 5 0 0 0 10 0v-2"/><circle cx="19" cy="10" r="2"/><path d="M5 3H3M13 3h-2"/>',
+    "scan": '<path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3M20 16v3a1 1 0 0 1-1 1h-3"/><line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="2 2"/>',
+    "arrow-left": '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+    "aperture": '<circle cx="12" cy="12" r="9"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/>',
+    "clipboard-check": '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><polyline points="9 13 11 15 15 10.5"/>',
+    "cloud-upload": '<path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 17 8.5 4 4 0 0 1 17 18H7Z"/><polyline points="9.5 13 12 10.5 14.5 13"/><line x1="12" y1="10.5" x2="12" y2="18"/>',
+    "refresh-cw": '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.5 9a8.5 8.5 0 0 1 14.4-4.6L23 10M1 14l5.1 5.6A8.5 8.5 0 0 0 20.5 15"/>',
+    "x": '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+    "microscope": '<path d="M6 22h12M9 18h5M11 18v-4.4a3.6 3.6 0 1 1 3.2-5.7"/><path d="M13 8.5 17.5 4l2 2-4 4.2"/><circle cx="8.5" cy="14" r="3.5"/>',
+    "activity": '<polyline points="2 12 6 12 9 20 14 4 17 12 22 12"/>',
+    "heart": '<path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.7 4.1 8.1 3.9 10.4 5.3 12 8c1.6-2.7 3.9-4.1 6.3-3.9 3.7.4 5.4 4 3.7 7.6C19.5 16.4 12 21 12 21Z"/>',
+    "users": '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6.4 6.5-6.4s6.5 2.8 6.5 6.4"/><circle cx="18" cy="9" r="2.6"/><path d="M15.5 13.8c2.9.4 5 2.7 5 6.2"/>',
+    "target": '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+    "check-circle": '<circle cx="12" cy="12" r="9"/><polyline points="8 12.5 10.8 15.3 16 9.3"/>'
+};
+function injectIcons(root=document){
+    root.querySelectorAll('[data-icon]').forEach(el=>{
+        const name = el.getAttribute('data-icon');
+        if(!ICONS[name]) return;
+        el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="100%" height="100%">${ICONS[name]}</svg>`;
+    });
+}
+injectIcons();
+
+/* ---------- Realistic cervix illustration (SVG, generated once, reused/cloned) ---------- */
+function buildCervixSVG(){
+    return `
+    <defs>
+        <radialGradient id="wallGrad" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stop-color="#e79aa1"/>
+            <stop offset="70%" stop-color="#c56a72"/>
+            <stop offset="100%" stop-color="#7a2f38"/>
+        </radialGradient>
+        <radialGradient id="cervixGrad" cx="45%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#f3b4b9"/>
+            <stop offset="55%" stop-color="#e8949b"/>
+            <stop offset="100%" stop-color="#c66670"/>
+        </radialGradient>
+        <radialGradient id="osGrad" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stop-color="#6e2229"/>
+            <stop offset="100%" stop-color="#3d1216"/>
+        </radialGradient>
+        <radialGradient id="highlightGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="softBlur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.2"/>
+        </filter>
+        <filter id="tinyBlur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="0.6"/>
+        </filter>
+        <filter id="grainTex" x="-20%" y="-20%" width="140%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/>
+            <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.55  0 0 0 0 0.2  0 0 0 0 0.25  0 0 0 0.08 0"/>
+        </filter>
+        <pattern id="punctationPattern" width="9" height="9" patternUnits="userSpaceOnUse">
+            <circle cx="4.5" cy="4.5" r="1" fill="#c81e3f" opacity="0.55"/>
+        </pattern>
+        <clipPath id="lesionHighClip"><path id="lesionHighClipPath" d="M 78 118 Q 55 128 58 103 Q 80 90 92 108 Q 90 116 78 118 Z"/></clipPath>
+    </defs>
+
+    <!-- vaginal canal wall -->
+    <circle cx="100" cy="100" r="96" fill="url(#wallGrad)"/>
+    <circle cx="100" cy="100" r="96" fill="url(#grainTex)" opacity="0.5"/>
+
+    <!-- rugae folds -->
+    <g stroke="#8a3540" stroke-width="1.1" fill="none" opacity="0.35">
+        <path d="M6 60 Q 30 55 20 90"/>
+        <path d="M8 130 Q 32 135 22 105"/>
+        <path d="M194 65 Q 170 60 180 92"/>
+        <path d="M192 132 Q 168 138 178 108"/>
+    </g>
+
+    <!-- speculum blades top/bottom for clinical framing -->
+    <path d="M-10 8 Q 100 -18 210 8 L 210 -20 L -10 -20 Z" fill="#f4dfe1" opacity="0.9"/>
+    <path d="M-10 192 Q 100 218 210 192 L 210 220 L -10 220 Z" fill="#f0d3d6" opacity="0.9"/>
+    <rect x="-10" y="-4" width="220" height="10" fill="#ffffff" opacity="0.35"/>
+
+    <!-- ectocervix -->
+    <ellipse cx="100" cy="100" rx="62" ry="58" fill="url(#cervixGrad)"/>
+    <ellipse cx="100" cy="100" rx="62" ry="58" fill="url(#grainTex)" opacity="0.35"/>
+
+    <!-- squamocolumnar junction (irregular transformation-zone boundary) -->
+    <path d="M 58 68 Q 75 55 100 56 Q 128 55 142 72 Q 150 100 138 126 Q 122 148 100 148 Q 76 149 62 128 Q 50 100 58 68 Z"
+          fill="none" stroke="#a4444e" stroke-width="1.2" stroke-dasharray="2.5 3" opacity="0.55"/>
+
+    <!-- vascular capillary pattern -->
+    <g stroke="#b23347" stroke-width="0.9" fill="none" opacity="0.45" stroke-linecap="round">
+        <path d="M70 72 Q 78 82 74 94"/>
+        <path d="M132 78 Q 124 90 130 100"/>
+        <path d="M64 118 Q 76 122 80 134"/>
+        <path d="M138 122 Q 126 128 124 138"/>
+        <path d="M100 60 Q 100 72 96 80"/>
+    </g>
+
+    <!-- nabothian cysts -->
+    <circle cx="118" cy="82" r="4.5" fill="#f6dcc9" opacity="0.8"/>
+    <circle cx="118" cy="82" r="4.5" fill="none" stroke="#d8a878" stroke-width="0.6" opacity="0.6"/>
+    <circle cx="76" cy="112" r="3.2" fill="#f6dcc9" opacity="0.75"/>
+
+    <!-- external os -->
+    <g id="os-group">
+        <ellipse cx="100" cy="98" rx="16" ry="20" fill="url(#osGrad)"/>
+        <path d="M100 80 Q 96 98 100 116 Q 104 98 100 80 Z" fill="#20090b" opacity="0.7"/>
+        <ellipse cx="100" cy="98" rx="16" ry="20" fill="none" stroke="#4a181c" stroke-width="1" opacity="0.5"/>
+    </g>
+
+    <!-- mucus glisten near os -->
+    <ellipse cx="92" cy="86" rx="7" ry="3.5" fill="#ffffff" opacity="0.25" filter="url(#tinyBlur)"/>
+
+    <!-- ===== Acetowhite lesion: mild (LSIL) ===== -->
+    <path id="lesion-mild" d="M 118 66 Q 136 58 146 74 Q 148 90 132 92 Q 116 90 112 78 Q 112 70 118 66 Z"
+          fill="#f8f3ee" opacity="0" filter="url(#softBlur)" class="lesion-shape"/>
+    <path d="M 118 66 Q 136 58 146 74 Q 148 90 132 92 Q 116 90 112 78 Q 112 70 118 66 Z"
+          id="lesion-mild-edge" fill="none" stroke="#e6ddd0" stroke-width="1" opacity="0" class="lesion-shape"/>
+
+    <!-- ===== Acetowhite lesion: high-grade (HSIL) with punctation ===== -->
+    <path id="lesion-high" d="M 78 118 Q 55 128 58 103 Q 80 90 92 108 Q 90 116 78 118 Z"
+          fill="#fbf9f6" opacity="0" filter="url(#softBlur)" class="lesion-shape"/>
+    <g id="lesion-high-texture" opacity="0" class="lesion-shape">
+        <path d="M 78 118 Q 55 128 58 103 Q 80 90 92 108 Q 90 116 78 118 Z" fill="url(#punctationPattern)" clip-path="url(#lesionHighClip)"/>
+    </g>
+    <path d="M 78 118 Q 55 128 58 103 Q 80 90 92 108 Q 90 116 78 118 Z"
+          id="lesion-high-edge" fill="none" stroke="#d94861" stroke-width="1.4" opacity="0" class="lesion-shape"/>
+
+    <!-- soft specular highlight from colposcope light -->
+    <ellipse cx="82" cy="76" rx="26" ry="16" fill="url(#highlightGrad)" opacity="0.55"/>
+    <ellipse cx="128" cy="130" rx="16" ry="10" fill="url(#highlightGrad)" opacity="0.3"/>
+    `;
+}
+document.getElementById('cervix-svg').innerHTML = buildCervixSVG();
+
+/* ---------- Scenario data ---------- */
+const scenarioData = {
+    1: {
+        classification: "Epitel Normal / Servisitis Jinak",
+        badge: "Aman", statusClass: "status-normal", barColor: "bg-emerald-500",
+        confidence: "98.2%", swedeScore: "0 / 10",
+        action: "Edukasi rutin menjaga kebersihan. Jadwalkan ulang pemeriksaan IVA/Pap Smear 3-5 tahun lagi.",
+        counseling: "\"Ibu, rahimnya sehat ya. Tidak ada tanda bahaya. Tetap jaga kebersihan area kewanitaan ya Bu.\"",
+        mildOpacity: 0, highOpacity: 0,
+        boxColor: "#10B981", boxLabel: "Normal",
+        boxBounds: { top: '34%', left: '34%', width: '32%', height: '32%' }
+    },
+    2: {
+        classification: "Lesi Asetowhite Ringan (LSIL)",
+        badge: "Waspada", statusClass: "status-mild", barColor: "bg-amber-500",
+        confidence: "92.5%", swedeScore: "4 / 10",
+        action: "Tatalaksana Krioterapi/Termokoagulasi di Faskes Primer (Program See-and-Treat).",
+        counseling: "\"Ada sedikit bercak putih Bu akibat virus, tapi tenang ini belum jadi kanker. Kita bisa lakukan pembekuan (krioterapi) sekarang agar bersih.\"",
+        mildOpacity: 0.85, highOpacity: 0,
+        boxColor: "#F59E0B", boxLabel: "LSIL",
+        boxBounds: { top: '22%', left: '52%', width: '30%', height: '26%' }
+    },
+    3: {
+        classification: "Lesi Pra-Kanker Derajat Tinggi (HSIL)",
+        badge: "Rujuk Segera", statusClass: "status-high", barColor: "bg-rose-600",
+        confidence: "96.1%", swedeScore: "8 / 10",
+        action: "Rujukan Segera ke Dokter Sp.OG untuk pemeriksaan Kolposkopi lanjutan & LEEP.",
+        counseling: "\"Ada area tebal dengan pola pembuluh darah tidak beraturan yang perlu penanganan dokter spesialis kandungan. Kami bantu buatkan surat rujukannya sekarang ya Bu.\"",
+        mildOpacity: 0, highOpacity: 0.92,
+        boxColor: "#E11D48", boxLabel: "HSIL",
+        boxBounds: { top: '46%', left: '22%', width: '32%', height: '30%' }
+    }
+};
+
+let selectedScenario = 1;
+document.querySelectorAll('input[name="scenario"]').forEach(radio=>{
+    radio.addEventListener('change', e=>{ selectedScenario = parseInt(e.target.value); });
+});
+
+function switchScreen(hideId, showId){
+    document.getElementById(hideId).classList.remove('active');
+    document.getElementById(showId).classList.add('active');
+    document.getElementById('global-header').style.display = (showId === 'screen-2') ? 'none' : 'block';
+    document.getElementById('app-container').scrollTop = 0;
+}
+
+function resetCervixLayers(){
+    ['lesion-mild','lesion-mild-edge','lesion-high','lesion-high-texture','lesion-high-edge'].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.style.opacity = 0;
+    });
+    document.getElementById('ai-bounding-box').style.display = 'none';
+}
+
+function startCamera(){
+    switchScreen('screen-1','screen-2');
+    resetCervixLayers();
+    document.getElementById('laser').style.display = 'none';
+    document.getElementById('reticle').style.opacity = '0.55';
+    document.getElementById('cervix-svg').classList.add('idle-breathe');
+    document.getElementById('capture-btn').style.display = 'flex';
+}
+
+function goBackToDashboard(){
+    switchScreen('screen-2','screen-1');
+}
+
+function captureAndScan(){
+    const captureBtn = document.getElementById('capture-btn');
+    const overlay = document.getElementById('scan-overlay');
+    const scanText = document.getElementById('scan-text');
+    const laser = document.getElementById('laser');
+    const svg = document.getElementById('cervix-svg');
+    const reticle = document.getElementById('reticle');
+
+    captureBtn.style.display = 'none';
+    overlay.classList.remove('hidden');
+    laser.style.display = 'block';
+    reticle.style.opacity = '0';
+    svg.classList.remove('idle-breathe');
+
+    const data = scenarioData[selectedScenario];
+
+    const texts = [
+        "Menghilangkan silau mukosa (Polarization)...",
+        "Memetakan batas SCJ...",
+        "Menghitung densitas asetowhite...",
+        "Mengalkulasi Swede Score..."
+    ];
+    let i = 0;
+    scanText.innerText = texts[0];
+    const interval = setInterval(()=>{
+        i++;
+        if(i < texts.length) scanText.innerText = texts[i];
+    }, 550);
+
+    // Reveal acetowhite reaction gradually, like real acetic-acid application
+    setTimeout(()=>{
+        const mild = document.getElementById('lesion-mild');
+        const mildEdge = document.getElementById('lesion-mild-edge');
+        const high = document.getElementById('lesion-high');
+        const highTex = document.getElementById('lesion-high-texture');
+        const highEdge = document.getElementById('lesion-high-edge');
+        if(mild){ mild.style.transition='opacity 1.1s ease'; mild.style.opacity = data.mildOpacity; }
+        if(mildEdge){ mildEdge.style.transition='opacity 1.1s ease'; mildEdge.style.opacity = data.mildOpacity>0?0.7:0; }
+        if(high){ high.style.transition='opacity 1.1s ease'; high.style.opacity = data.highOpacity; }
+        if(highTex){ highTex.style.transition='opacity 1.1s ease'; highTex.style.opacity = data.highOpacity>0?0.9:0; }
+        if(highEdge){ highEdge.style.transition='opacity 1.1s ease'; highEdge.style.opacity = data.highOpacity>0?0.85:0; }
+    }, 700);
+
+    setTimeout(()=>{
+        clearInterval(interval);
+        overlay.classList.add('hidden');
+        laser.style.display = 'none';
+        captureBtn.style.display = 'flex';
+        showResults();
+    }, 2500);
+}
+
+function showResults(){
+    const data = scenarioData[selectedScenario];
+
+    document.getElementById('result-classification').innerText = data.classification;
+    const badge = document.getElementById('result-badge');
+    badge.innerText = data.badge;
+    badge.className = `px-3 py-1 rounded-full border text-xs font-bold shrink-0 ${data.statusClass}`;
+    document.getElementById('result-indicator-bar').className = `absolute top-0 left-0 w-1 h-full ${data.barColor}`;
+    document.getElementById('result-confidence').innerText = data.confidence;
+    document.getElementById('result-swede').innerText = data.swedeScore;
+    document.getElementById('result-action').innerText = data.action;
+    document.getElementById('result-counseling').innerText = data.counseling;
+
+    const resultImgContainer = document.getElementById('result-image-container');
+    const originalSvg = document.getElementById('cervix-svg');
+    resultImgContainer.innerHTML = '';
+    const clonedSvg = originalSvg.cloneNode(true);
+    clonedSvg.classList.remove('max-w-[360px]','idle-breathe');
+    clonedSvg.classList.add('w-full','h-full');
+    clonedSvg.style.transform = 'scale(1.12)';
+    resultImgContainer.appendChild(clonedSvg);
+
+    const box = document.createElement('div');
+    box.className = 'bounding-box';
+    box.setAttribute('data-label', data.boxLabel);
+    box.style.display = 'block';
+    box.style.borderColor = data.boxColor;
+    box.style.color = data.boxColor;
+    box.style.top = data.boxBounds.top;
+    box.style.left = data.boxBounds.left;
+    box.style.width = data.boxBounds.width;
+    box.style.height = data.boxBounds.height;
+    resultImgContainer.appendChild(box);
+
+    switchScreen('screen-2','screen-3');
+}
+
+function restartScreening(){
+    switchScreen('screen-3','screen-1');
+}
+
+let toastTimer1, toastTimer2;
+function saveToSatuSehat(){
+    const toast = document.getElementById('toast');
+    clearTimeout(toastTimer1); clearTimeout(toastTimer2);
+    toast.classList.remove('opacity-0');
+    toast.classList.add('opacity-100');
+    toastTimer1 = setTimeout(()=>{
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+    }, 2600);
+}
+
+function toggleModal(){
+    const modal = document.getElementById('about-modal');
+    const content = document.getElementById('modal-content');
+    if(modal.classList.contains('opacity-0')){
+        modal.classList.remove('opacity-0','pointer-events-none');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    } else {
+        modal.classList.add('opacity-0','pointer-events-none');
+        content.classList.remove('scale-100');
+        content.classList.add('scale-95');
+    }
+}
+</script>
+</body>
+</html>
